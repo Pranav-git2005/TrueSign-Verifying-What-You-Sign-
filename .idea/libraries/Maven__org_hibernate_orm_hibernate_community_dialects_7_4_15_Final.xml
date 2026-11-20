@@ -1,0 +1,14 @@
+<component name="libraryTable">
+  <library name="Maven: org.hibernate.orm:hibernate-community-dialects:7.4.15.Final" type="java-imported" external-system-id="Maven">
+    <properties groupId="org.hibernate.orm" artifactId="hibernate-community-dialects" version="7.4.15.Final" baseVersion="7.4.15.Final" />
+    <CLASSES>
+      <root url="jar://$MAVEN_REPOSITORY$/org/hibernate/orm/hibernate-community-dialects/7.4.15.Final/hibernate-community-dialects-7.4.15.Final.jar!/" />
+    </CLASSES>
+    <JAVADOC>
+      <root url="jar://$MAVEN_REPOSITORY$/org/hibernate/orm/hibernate-community-dialects/7.4.15.Final/hibernate-community-dialects-7.4.15.Final-javadoc.jar!/" />
+    </JAVADOC>
+    <SOURCES>
+      <root url="jar://$MAVEN_REPOSITORY$/org/hibernate/orm/hibernate-community-dialects/7.4.15.Final/hibernate-community-dialects-7.4.15.Final-sources.jar!/" />
+    </SOURCES>
+  </library>
+</component>

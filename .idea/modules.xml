@@ -3,6 +3,7 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/TrueSign.iml" filepath="$PROJECT_DIR$/.idea/TrueSign.iml" />
+      <module fileurl="file://$PROJECT_DIR$/backend/truesign-backend.iml" filepath="$PROJECT_DIR$/backend/truesign-backend.iml" />
     </modules>
   </component>
 </project>

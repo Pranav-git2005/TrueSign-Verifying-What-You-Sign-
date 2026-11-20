@@ -1,0 +1,6 @@
+com\truesign\verifier\SimulationVerifierTest.class
+com\truesign\service\PassportServiceTest.class
+com\truesign\verifier\IntentVerifierTest.class
+com\truesign\verifier\PolicyVerifierTest.class
+com\truesign\TruesignBackendApplicationTests.class
+com\truesign\blockchain\BlockchainServiceTest.class
