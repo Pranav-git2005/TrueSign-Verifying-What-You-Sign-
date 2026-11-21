@@ -1,0 +1,99 @@
+
+========== application.properties ==========
+
+# ==================================================
+# TRUESIGN APPLICATION
+# ==================================================
+
+spring.application.name=truesign-backend
+server.port=8080
+
+
+# ==================================================
+# SQLITE DATABASE CONFIGURATION
+# ==================================================
+
+spring.datasource.url=jdbc:sqlite:truesign.db
+spring.datasource.driver-class-name=org.sqlite.JDBC
+
+spring.datasource.hikari.maximum-pool-size=1
+spring.datasource.hikari.minimum-idle=1
+
+
+# ==================================================
+# JPA / HIBERNATE CONFIGURATION
+# ==================================================
+
+spring.jpa.database-platform=org.hibernate.community.dialect.SQLiteDialect
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=false
+spring.jpa.open-in-view=false
+spring.jpa.properties.hibernate.format_sql=true
+
+
+# ==================================================
+# BLOCKCHAIN CONFIGURATION
+# ==================================================
+
+truesign.blockchain.rpc-url=http://127.0.0.1:8545
+truesign.blockchain.chain-id=31337
+truesign.blockchain.connection-timeout=10000
+truesign.blockchain.read-timeout=10000
+
+
+# ==================================================
+# SMART CONTRACT ADDRESSES
+# ==================================================
+
+truesign.contracts.safe-address=0x4d41D1072244E771c3284eDc4c995a8EF65709ca
+
+truesign.contracts.guard-address=0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9
+
+truesign.contracts.payee-registry-address=0x5FbDB2315678afecb367f032d93F642f64180aa3
+
+truesign.contracts.token-address=0x0165878A594ca255338adfa4d48449f69242Eb8F
+
+
+# ==================================================
+# VERIFICATION CONFIGURATION
+# ==================================================
+
+truesign.verification.required-quorum=2
+truesign.verification.total-verifiers=3
+
+truesign.verification.attestation-validity-seconds=3600
+
+truesign.verification.enable-calldata-check=true
+truesign.verification.enable-approval-check=true
+truesign.verification.enable-simulation-check=true
+
+
+# ==================================================
+# PAYEE REGISTRY CONFIGURATION
+# ==================================================
+
+truesign.payee.cooldown-seconds=86400
+
+
+# ==================================================
+# API CONFIGURATION
+# ==================================================
+
+
+spring.mvc.problemdetails.enabled=true
+
+
+# ==================================================
+# LOGGING CONFIGURATION
+# ==================================================
+
+logging.level.root=INFO
+logging.level.com.truesign=DEBUG
+logging.level.org.web3j=INFO
+
+# ==================================================
+# VERIFIER SIGNING CONFIGURATION
+# Never put real private keys directly in this file.
+# ==================================================
+
+# Guard transaction submitter key - use local Anvil key only.

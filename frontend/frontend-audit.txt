@@ -1,0 +1,738 @@
+========== TRUESIGN FRONTEND AUDIT ==========
+
+========== FILE: package.json ==========
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "axios": "^1.21.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.77.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router-dom": "^7.18.6",
+    "recharts": "^3.11.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "autoprefixer": "^10.7.0",
+    "eslint": "^10.14.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.7",
+    "globals": "^17.13.0",
+    "postcss": "^8.5.33",
+    "tailwindcss": "^3.4.17",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.72.1",
+    "vite": "^8.3.6"
+  }
+}
+
+========== FILE: index.html ==========
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080b12" />
+    <meta name="description" content="TrueSign - Real-time blockchain transaction security command center." />
+    <title>TrueSign | Command Center</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
+========== FILE: vite.config.ts ==========
+import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite'
+
+// https://vite.dev/config/
+export default defineConfig({
+  plugins: [react()],
+})
+
+========== FILE: tailwind.config.js ==========
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {
+      colors: {
+        midnight: "#080B12",
+        panel: "#101622",
+        surface: "#151E2D",
+        accent: "#42E8A4",
+        muted: "#8995A8",
+      },
+      boxShadow: {
+        glow: "0 0 30px rgba(66,232,164,0.10)",
+      },
+    },
+  },
+  plugins: [],
+};
+
+========== FILE: postcss.config.js ==========
+export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+};
+
+========== FILE: tsconfig.json ==========
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}
+
+========== FILE: tsconfig.app.json ==========
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "types": ["vite/client"],
+    "allowArbitraryExtensions": true,
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src"]
+}
+
+========== FILE: src\App.tsx ==========
+import {
+  Activity,
+  ArrowUpRight,
+  Blocks,
+  BookOpenCheck,
+  ChevronDown,
+  CircleDot,
+  Code2,
+  Command,
+  FileCheck2,
+  Fingerprint,
+  FlaskConical,
+  Gauge,
+  LayoutDashboard,
+  Menu,
+  Network,
+  Radio,
+  ScanSearch,
+  Settings,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  X,
+} from "lucide-react";
+import { useState } from "react";
+import {
+  BrowserRouter,
+  NavLink,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router-dom";
+
+type NavItem = {
+  label: string;
+  path: string;
+  icon: typeof Gauge;
+};
+
+const navigation: { title: string; items: NavItem[] }[] = [
+  {
+    title: "OVERVIEW",
+    items: [
+      { label: "Dashboard", path: "/", icon: LayoutDashboard },
+      { label: "Live Monitor", path: "/monitor", icon: Activity },
+    ],
+  },
+  {
+    title: "TRANSACTION SECURITY",
+    items: [
+      { label: "Passports", path: "/passports", icon: Fingerprint },
+      { label: "Verification", path: "/verification", icon: ShieldCheck },
+      { label: "Transaction Intel", path: "/transactions", icon: ScanSearch },
+      { label: "Snapshots", path: "/snapshots", icon: Blocks },
+      { label: "Proof Explorer", path: "/proofs", icon: FileCheck2 },
+    ],
+  },
+  {
+    title: "SECURITY OPERATIONS",
+    items: [
+      { label: "Attack Simulator", path: "/simulator", icon: FlaskConical },
+      { label: "Anomalies", path: "/anomalies", icon: ShieldAlert },
+      { label: "Contract Explorer", path: "/contracts", icon: Code2 },
+    ],
+  },
+];
+
+function Sidebar({
+  open,
+  close,
+}: {
+  open: boolean;
+  close: () => void;
+}) {
+  return (
+    <>
+      {open && (
+        <button
+          aria-label="Close navigation"
+          onClick={close}
+          className="fixed inset-0 z-40 bg-black/70 lg:hidden"
+        />
+      )}
+
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-[264px] flex-col border-r border-white/[0.07] bg-[#0B1019] transition-transform duration-200 lg:translate-x-0 ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="flex h-[76px] items-center justify-between border-b border-white/[0.07] px-5">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-300/20 bg-emerald-300/10 text-emerald-300 shadow-glow">
+              <Shield size={21} />
+            </div>
+            <div>
+              <div className="text-[17px] font-bold tracking-wide text-white">
+                TRUESIGN<span className="text-emerald-400">.</span>
+              </div>
+              <div className="text-[9px] font-semibold tracking-[0.22em] text-slate-500">
+                COMMAND CENTER
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={close}
+            className="rounded-lg p-2 text-slate-500 hover:bg-white/5 lg:hidden"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="mx-4 mt-5 rounded-xl border border-emerald-400/15 bg-emerald-400/[0.06] p-3">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-50" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-400" />
+            </span>
+            <span className="text-xs font-semibold text-emerald-200">
+              SYSTEM INITIALIZING
+            </span>
+          </div>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-slate-500">
+            Live backend connection will be enabled in Batch 2.
+          </p>
+        </div>
+
+        <nav className="flex-1 space-y-7 overflow-y-auto px-4 py-6">
+          {navigation.map((group) => (
+            <div key={group.title}>
+              <p className="eyebrow mb-2 px-3">{group.title}</p>
+              <div className="space-y-1">
+                {group.items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <NavLink
+                      key={item.path}
+                      to={item.path}
+                      end={item.path === "/"}
+                      onClick={close}
+                      className={({ isActive }) =>
+                        `nav-link ${isActive ? "nav-link-active" : ""}`
+                      }
+                    >
+                      <Icon size={17} />
+                      <span>{item.label}</span>
+                      {item.path === "/monitor" && (
+                        <span className="ml-auto h-1.5 w-1.5 rounded-full bg-amber-400" />
+                      )}
+                    </NavLink>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        <div className="border-t border-white/[0.07] p-4">
+          <NavLink to="/settings" className="nav-link">
+            <Settings size={17} />
+            Settings
+          </NavLink>
+          <div className="mt-3 flex items-center gap-3 rounded-xl bg-white/[0.035] p-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-700 text-xs font-bold text-white">
+              TS
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-semibold text-slate-200">
+                TrueSign Operator
+              </p>
+              <p className="text-[10px] text-slate-500">Local environment</p>
+            </div>
+            <ChevronDown size={15} className="text-slate-500" />
+          </div>
+        </div>
+      </aside>
+    </>
+  );
+}
+
+function Header({ onMenu }: { onMenu: () => void }) {
+  const location = useLocation();
+  const current = navigation
+    .flatMap((group) => group.items)
+    .find((item) => item.path === location.pathname);
+  const title = current?.label || "Settings";
+
+  return (
+    <header className="sticky top-0 z-30 flex h-[76px] items-center justify-between border-b border-white/[0.07] bg-[#080B12]/90 px-4 backdrop-blur-xl sm:px-7">
+      <div className="flex items-center gap-3">
+        <button
+          onClick={onMenu}
+          className="rounded-lg border border-white/10 p-2 text-slate-300 lg:hidden"
+        >
+          <Menu size={19} />
+        </button>
+        <div>
+          <p className="text-sm font-semibold text-white">{title}</p>
+          <p className="mt-0.5 hidden text-[11px] text-slate-500 sm:block">
+            TrueSign / Command Center / {title}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <div className="hidden items-center gap-2 rounded-full border border-amber-400/15 bg-amber-400/[0.06] px-3 py-1.5 sm:flex">
+          <CircleDot size={12} className="text-amber-400" />
+          <span className="text-[11px] font-medium text-amber-300">
+            Backend pending
+          </span>
+        </div>
+        <div className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-slate-400">
+          <Command size={16} />
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function MetricCard({
+  label,
+  value,
+  detail,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  icon: typeof Gauge;
+}) {
+  return (
+    <div className="panel group p-5 transition hover:border-emerald-400/20">
+      <div className="flex items-center justify-between">
+        <p className="text-xs font-medium text-slate-400">{label}</p>
+        <div className="rounded-xl border border-white/[0.07] bg-white/[0.035] p-2 text-emerald-300">
+          <Icon size={17} />
+        </div>
+      </div>
+      <p className="mt-5 text-3xl font-semibold tracking-tight text-white">
+        {value}
+      </p>
+      <p className="mt-2 text-[11px] text-slate-500">{detail}</p>
+    </div>
+  );
+}
+
+function Dashboard() {
+  return (
+    <div className="space-y-7">
+      <section className="relative overflow-hidden rounded-2xl border border-emerald-300/15 bg-gradient-to-br from-[#10251F] via-[#101B20] to-[#111827] p-6 sm:p-8">
+        <div className="pointer-events-none absolute -right-12 -top-24 h-72 w-72 rounded-full border border-emerald-300/10" />
+        <div className="pointer-events-none absolute -right-2 -top-14 h-52 w-52 rounded-full border border-emerald-300/[0.07]" />
+        <div className="relative max-w-2xl">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-300/[0.08] px-3 py-1.5">
+            <ShieldCheck size={13} className="text-emerald-300" />
+            <span className="text-[10px] font-semibold tracking-[0.14em] text-emerald-200">
+              TRANSACTION SECURITY PLATFORM
+            </span>
+          </div>
+          <h1 className="text-2xl font-bold leading-tight text-white sm:text-4xl">
+            Secure every transaction.
+            <br />
+            <span className="text-emerald-300">Trust every execution.</span>
+          </h1>
+          <p className="mt-4 max-w-xl text-sm leading-6 text-slate-400">
+            Monitor payment passports, inspect verification decisions, analyze
+            transaction risks and explore on-chain execution evidence from one
+            command center.
+          </p>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <a
+              href="/passports"
+              className="inline-flex items-center gap-2 rounded-xl bg-emerald-300 px-4 py-2.5 text-xs font-bold text-[#07130F] transition hover:bg-emerald-200"
+            >
+              Explore passports <ArrowUpRight size={15} />
+            </a>
+            <a
+              href="/simulator"
+              className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-xs font-semibold text-slate-200 transition hover:bg-white/[0.08]"
+            >
+              <FlaskConical size={15} /> Open simulation lab
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <p className="eyebrow">SYSTEM OVERVIEW</p>
+            <h2 className="mt-1 text-lg font-semibold text-white">
+              Security at a glance
+            </h2>
+          </div>
+          <span className="text-[10px] text-slate-500">
+            Live metrics will appear after backend integration
+          </span>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <MetricCard
+            label="Total Passports"
+            value="—"
+            detail="Waiting for passport API"
+            icon={Fingerprint}
+          />
+          <MetricCard
+            label="Verified Transactions"
+            value="—"
+            detail="Waiting for verification API"
+            icon={ShieldCheck}
+          />
+          <MetricCard
+            label="Security Alerts"
+            value="—"
+            detail="Waiting for anomaly API"
+            icon={ShieldAlert}
+          />
+          <MetricCard
+            label="Latest Block"
+            value="—"
+            detail="Waiting for blockchain connection"
+            icon={Blocks}
+          />
+        </div>
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+        <div className="panel p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="eyebrow">REAL-TIME ACTIVITY</p>
+              <h2 className="mt-1 text-base font-semibold text-white">
+                Event stream
+              </h2>
+            </div>
+            <div className="rounded-lg border border-white/[0.07] p-2 text-slate-400">
+              <Radio size={17} />
+            </div>
+          </div>
+          <div className="mt-6 flex min-h-40 flex-col items-center justify-center rounded-xl border border-dashed border-white/10 bg-white/[0.015] px-5 text-center">
+            <Activity size={23} className="text-slate-600" />
+            <p className="mt-3 text-sm font-medium text-slate-300">
+              Waiting for live events
+            </p>
+            <p className="mt-1 max-w-sm text-xs leading-5 text-slate-500">
+              Passport creation, verifier completion, execution and heartbeat
+              events will appear here when the SSE stream is connected.
+            </p>
+          </div>
+        </div>
+
+        <div className="panel p-5">
+          <p className="eyebrow">INFRASTRUCTURE</p>
+          <h2 className="mt-1 text-base font-semibold text-white">
+            Component connectivity
+          </h2>
+          <div className="mt-5 space-y-4">
+            {[
+              ["Spring Boot API", "Not connected"],
+              ["PostgreSQL", "Not checked"],
+              ["Blockchain RPC", "Not checked"],
+              ["Smart contracts", "Not checked"],
+              ["SSE event stream", "Not connected"],
+            ].map(([name, status]) => (
+              <div
+                key={name}
+                className="flex items-center justify-between gap-3"
+              >
+                <div className="flex items-center gap-2.5">
+                  <span className="h-2 w-2 rounded-full bg-slate-600" />
+                  <span className="text-xs text-slate-300">{name}</span>
+                </div>
+                <span className="text-[10px] text-slate-500">{status}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-5 rounded-xl bg-white/[0.03] p-3">
+            <div className="flex items-center gap-2 text-xs text-slate-300">
+              <Network size={14} className="text-emerald-300" />
+              Integration status
+            </div>
+            <p className="mt-1 text-[11px] leading-5 text-slate-500">
+              The connection checks will become active in Batch 2. No live
+              status is assumed in this foundation build.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="panel p-5">
+        <div className="flex items-center gap-2">
+          <BookOpenCheck size={17} className="text-emerald-300" />
+          <h2 className="text-sm font-semibold text-white">
+            Platform modules
+          </h2>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {[
+            ["Passport lifecycle", "Create and track payment passports.", "/passports"],
+            ["Verification engine", "Inspect verifier decisions and anomalies.", "/verification"],
+            ["Transaction intelligence", "Decode and inspect transaction calldata.", "/transactions"],
+            ["Snapshot inspector", "Compare state before and after execution.", "/snapshots"],
+            ["Attack simulation", "Run controlled security test scenarios.", "/simulator"],
+            ["Proof explorer", "Inspect receipts and verification evidence.", "/proofs"],
+          ].map(([title, description, path]) => (
+            <a
+              href={path}
+              key={title}
+              className="rounded-xl border border-white/[0.07] bg-white/[0.02] p-4 transition hover:border-emerald-300/20 hover:bg-emerald-300/[0.035]"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-slate-200">{title}</span>
+                <ArrowUpRight size={14} className="text-slate-500" />
+              </div>
+              <p className="mt-2 text-[11px] leading-5 text-slate-500">
+                {description}
+              </p>
+            </a>
+          ))}
+        </div>
+      </section>
+
+      <footer className="flex flex-wrap items-center justify-between gap-2 pb-3 text-[10px] text-slate-600">
+        <span>TRUESIGN COMMAND CENTER · DEVELOPMENT BUILD</span>
+        <span>Frontend foundation · Batch 1</span>
+      </footer>
+    </div>
+  );
+}
+
+function Placeholder({ title }: { title: string }) {
+  return (
+    <div className="panel flex min-h-[340px] flex-col items-center justify-center p-8 text-center">
+      <div className="rounded-2xl border border-emerald-300/15 bg-emerald-300/[0.06] p-4 text-emerald-300">
+        <Gauge size={25} />
+      </div>
+      <h2 className="mt-5 text-lg font-semibold text-white">{title}</h2>
+      <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
+        This module is included in the navigation. Its complete functionality
+        will be implemented in the upcoming integration batches.
+      </p>
+      <span className="mt-4 rounded-full border border-emerald-300/15 bg-emerald-300/[0.06] px-3 py-1 text-[10px] font-semibold text-emerald-300">
+        MODULE PLANNED
+      </span>
+    </div>
+  );
+}
+
+function AppLayout() {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  return (
+    <div className="min-h-screen">
+      <Sidebar open={menuOpen} close={() => setMenuOpen(false)} />
+      <div className="min-h-screen lg:pl-[264px]">
+        <Header onMenu={() => setMenuOpen(true)} />
+        <main className="mx-auto max-w-[1600px] p-4 sm:p-7">
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/monitor" element={<Placeholder title="Live Monitor" />} />
+            <Route path="/passports" element={<Placeholder title="Passport Explorer" />} />
+            <Route path="/verification" element={<Placeholder title="Verification Center" />} />
+            <Route path="/transactions" element={<Placeholder title="Transaction Intelligence" />} />
+            <Route path="/snapshots" element={<Placeholder title="Snapshot Inspector" />} />
+            <Route path="/proofs" element={<Placeholder title="Proof Explorer" />} />
+            <Route path="/simulator" element={<Placeholder title="Attack Simulation Lab" />} />
+            <Route path="/anomalies" element={<Placeholder title="Anomaly Center" />} />
+            <Route path="/contracts" element={<Placeholder title="Contract Explorer" />} />
+            <Route path="/settings" element={<Placeholder title="Settings" />} />
+            <Route path="*" element={<Placeholder title="Page not found" />} />
+          </Routes>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppLayout />
+    </BrowserRouter>
+  );
+}
+
+
+========== FILE: src\main.tsx ==========
+import React from "react";
+import ReactDOM from "react-dom/client";
+import App from "./App";
+import "./index.css";
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+);
+
+========== FILE: src\index.css ==========
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: Inter, system-ui, sans-serif;
+  color: #e7edf5;
+  background: #080b12;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at 80% 0%, rgba(32, 94, 78, 0.12), transparent 35%),
+    #080b12;
+}
+
+button, input, select, textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+::selection {
+  background: rgba(66, 232, 164, 0.25);
+  color: white;
+}
+
+@layer components {
+  .panel {
+    @apply rounded-2xl border border-white/[0.07] bg-panel;
+  }
+
+  .muted {
+    @apply text-slate-400;
+  }
+
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500;
+  }
+
+  .nav-link {
+    @apply flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-400 transition hover:bg-white/[0.05] hover:text-white;
+  }
+
+  .nav-link-active {
+    @apply border border-emerald-400/15 bg-emerald-400/[0.09] text-emerald-300;
+  }
+}
+
+========== FILE: src\lib\api.ts ==========
+import axios from "axios";
+
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
+
+export const api = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 15000,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
+
+export const API_BASE = API_BASE_URL;
+
+export function getApiErrorMessage(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    const responseData: unknown = error.response?.data;
+
+    if (responseData && typeof responseData === "object") {
+      const data = responseData as Record<string, unknown>;
+
+      if (typeof data.message === "string") return data.message;
+      if (typeof data.error === "string") return data.error;
+    }
+
+    return error.message || "Backend request failed";
+  }
+
+  return error instanceof Error
+    ? error.message
+    : "Unexpected error";
+}
+
+========== SRC DIRECTORY STRUCTURE ==========
+.\src\App.css
+.\src\App.tsx
+.\src\index.css
+.\src\main.tsx
+.\src\assets\hero.png
+.\src\assets\react.svg
+.\src\assets\vite.svg
+.\src\lib\api.ts

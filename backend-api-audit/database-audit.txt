@@ -1,0 +1,658 @@
+
+========== ENTITY: PassportSnapshot.java ==========
+package com.truesign.entity;
+
+import jakarta.persistence.*;
+
+@Entity
+@Table(name = "passport_snapshots")
+public class PassportSnapshot {
+
+    @Id
+    @Column(length = 36, nullable = false)
+    private String id;
+
+    @Column(nullable = false, length = 36)
+    private String passportId;
+
+    @Column(nullable = false, length = 40)
+    private String snapshotType;
+
+    @Column(nullable = false)
+    private long capturedAtEpochMs;
+
+    @Column(nullable = false)
+    private String blockNumber;
+
+    @Column(nullable = false, length = 42)
+    private String accountAddress;
+
+    @Column(nullable = false, length = 42)
+    private String intendedRecipient;
+
+    @Column(nullable = false, length = 42)
+    private String tokenAddress;
+
+    @Column(nullable = false, length = 42)
+    private String targetContractAddress;
+
+    @Column(nullable = false)
+    private String accountNativeBalanceWei;
+
+    @Column(nullable = false)
+    private String recipientNativeBalanceWei;
+
+    @Column(nullable = false)
+    private String accountTokenBalance;
+
+    @Column(nullable = false)
+    private String recipientTokenBalance;
+
+    @Column(nullable = false, length = 66)
+    private String targetCodeHash;
+
+    @Column(nullable = false)
+    private boolean payeeRegistered;
+
+    @Column(nullable = false)
+    private boolean payeeReady;
+
+    @Column(nullable = false)
+    private long readyAtEpochSeconds;
+
+    @Column(nullable = false)
+    private long remainingCooldownSeconds;
+
+    public PassportSnapshot() {}
+
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
+
+    public String getPassportId() { return passportId; }
+    public void setPassportId(String passportId) { this.passportId = passportId; }
+
+    public String getSnapshotType() { return snapshotType; }
+    public void setSnapshotType(String snapshotType) { this.snapshotType = snapshotType; }
+
+    public long getCapturedAtEpochMs() { return capturedAtEpochMs; }
+    public void setCapturedAtEpochMs(long value) { this.capturedAtEpochMs = value; }
+
+    public String getBlockNumber() { return blockNumber; }
+    public void setBlockNumber(String blockNumber) { this.blockNumber = blockNumber; }
+
+    public String getAccountAddress() { return accountAddress; }
+    public void setAccountAddress(String value) { this.accountAddress = value; }
+
+    public String getIntendedRecipient() { return intendedRecipient; }
+    public void setIntendedRecipient(String value) { this.intendedRecipient = value; }
+
+    public String getTokenAddress() { return tokenAddress; }
+    public void setTokenAddress(String value) { this.tokenAddress = value; }
+
+    public String getTargetContractAddress() { return targetContractAddress; }
+    public void setTargetContractAddress(String value) { this.targetContractAddress = value; }
+
+    public String getAccountNativeBalanceWei() { return accountNativeBalanceWei; }
+    public void setAccountNativeBalanceWei(String value) { this.accountNativeBalanceWei = value; }
+
+    public String getRecipientNativeBalanceWei() { return recipientNativeBalanceWei; }
+    public void setRecipientNativeBalanceWei(String value) { this.recipientNativeBalanceWei = value; }
+
+    public String getAccountTokenBalance() { return accountTokenBalance; }
+    public void setAccountTokenBalance(String value) { this.accountTokenBalance = value; }
+
+    public String getRecipientTokenBalance() { return recipientTokenBalance; }
+    public void setRecipientTokenBalance(String value) { this.recipientTokenBalance = value; }
+
+    public String getTargetCodeHash() { return targetCodeHash; }
+    public void setTargetCodeHash(String value) { this.targetCodeHash = value; }
+
+    public boolean isPayeeRegistered() { return payeeRegistered; }
+    public void setPayeeRegistered(boolean value) { this.payeeRegistered = value; }
+
+    public boolean isPayeeReady() { return payeeReady; }
+    public void setPayeeReady(boolean value) { this.payeeReady = value; }
+
+    public long getReadyAtEpochSeconds() { return readyAtEpochSeconds; }
+    public void setReadyAtEpochSeconds(long value) { this.readyAtEpochSeconds = value; }
+
+    public long getRemainingCooldownSeconds() { return remainingCooldownSeconds; }
+    public void setRemainingCooldownSeconds(long value) { this.remainingCooldownSeconds = value; }
+}
+
+========== ENTITY: PayeeRecord.java ==========
+package com.truesign.entity;
+
+import jakarta.persistence.*;
+import java.time.Instant;
+
+@Entity
+@Table(
+    name = "registered_payees",
+    uniqueConstraints = @UniqueConstraint(
+        name = "uk_payee_account_payee",
+        columnNames = {"account_address", "payee_address"}
+    )
+)
+public class PayeeRecord {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private String id;
+
+    @Column(name = "account_address", nullable = false, length = 42)
+    private String account;
+
+    @Column(name = "payee_address", nullable = false, length = 42)
+    private String payee;
+
+    @Column(name = "transaction_hash", nullable = false, length = 66)
+    private String transactionHash;
+
+    @Column(name = "activation_timestamp", nullable = false)
+    private String activationTimestamp;
+
+    @Column(nullable = false)
+    private Instant createdAt;
+
+    public PayeeRecord() {}
+
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
+
+    public String getAccount() { return account; }
+    public void setAccount(String account) { this.account = account; }
+
+    public String getPayee() { return payee; }
+    public void setPayee(String payee) { this.payee = payee; }
+
+    public String getTransactionHash() { return transactionHash; }
+    public void setTransactionHash(String transactionHash) {
+        this.transactionHash = transactionHash;
+    }
+
+    public String getActivationTimestamp() { return activationTimestamp; }
+    public void setActivationTimestamp(String activationTimestamp) {
+        this.activationTimestamp = activationTimestamp;
+    }
+
+    public Instant getCreatedAt() { return createdAt; }
+    public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
+}
+
+========== ENTITY: PaymentPassport.java ==========
+
+package com.truesign.entity;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+import java.time.Instant;
+
+@Entity
+@Table(name = "payment_passports")
+public class PaymentPassport {
+
+    @Id
+    @Column(length = 36, nullable = false)
+    private String id;
+
+    @Column(nullable = false, length = 66)
+    private String account;
+
+    @Column(nullable = false)
+    private String mode;
+
+    @Column(nullable = false)
+    private long chainId;
+
+    @Column(nullable = false, length = 100)
+    private String purpose;
+
+    @Column(nullable = false, length = 500)
+    private String summary;
+
+    @Column(nullable = false, length = 42)
+    private String intendedRecipient;
+
+    @Column(nullable = false, length = 42)
+    private String tokenAddress;
+
+    @Column(nullable = false, length = 20)
+    private String tokenSymbol;
+
+    @Column(nullable = false)
+    private String amount;
+
+    @Column(nullable = false)
+    private String transactionTarget;
+
+    @Column(nullable = false)
+    private String transactionValueWei;
+
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String transactionData;
+
+    @Column(nullable = false)
+    private int operation;
+
+    @Column(nullable = false)
+    private long transactionNonce;
+
+    @Column(nullable = false, length = 66)
+    private String intentHash;
+
+    @Column(nullable = false, length = 66)
+    private String transactionHash;
+
+    @Column(nullable = false, length = 66)
+    private String passportHash;
+
+    @Column(nullable = false)
+    private Instant createdAt;
+
+    @Column(nullable = false)
+    private Instant expiresAt;
+
+    @Column(nullable = false, length = 30)
+    private String status;
+
+    @Column(nullable = false, length = 66)
+    private String constraintsHash;
+
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String constraintsPayload;
+
+    public PaymentPassport() {
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public String getAccount() {
+        return account;
+    }
+
+    public void setAccount(String account) {
+        this.account = account;
+    }
+
+    public String getMode() {
+        return mode;
+    }
+
+    public void setMode(String mode) {
+        this.mode = mode;
+    }
+
+    public long getChainId() {
+        return chainId;
+    }
+
+    public void setChainId(long chainId) {
+        this.chainId = chainId;
+    }
+
+    public String getPurpose() {
+        return purpose;
+    }
+
+    public void setPurpose(String purpose) {
+        this.purpose = purpose;
+    }
+
+    public String getSummary() {
+        return summary;
+    }
+
+    public void setSummary(String summary) {
+        this.summary = summary;
+    }
+
+    public String getIntendedRecipient() {
+        return intendedRecipient;
+    }
+
+    public void setIntendedRecipient(String intendedRecipient) {
+        this.intendedRecipient = intendedRecipient;
+    }
+
+    public String getTokenAddress() {
+        return tokenAddress;
+    }
+
+    public void setTokenAddress(String tokenAddress) {
+        this.tokenAddress = tokenAddress;
+    }
+
+    public String getTokenSymbol() {
+        return tokenSymbol;
+    }
+
+    public void setTokenSymbol(String tokenSymbol) {
+        this.tokenSymbol = tokenSymbol;
+    }
+
+    public String getAmount() {
+        return amount;
+    }
+
+    public void setAmount(String amount) {
+        this.amount = amount;
+    }
+
+    public String getTransactionTarget() {
+        return transactionTarget;
+    }
+
+    public void setTransactionTarget(String transactionTarget) {
+        this.transactionTarget = transactionTarget;
+    }
+
+    public String getTransactionValueWei() {
+        return transactionValueWei;
+    }
+
+    public void setTransactionValueWei(String transactionValueWei) {
+        this.transactionValueWei = transactionValueWei;
+    }
+
+    public String getTransactionData() {
+        return transactionData;
+    }
+
+    public void setTransactionData(String transactionData) {
+        this.transactionData = transactionData;
+    }
+
+    public int getOperation() {
+        return operation;
+    }
+
+    public void setOperation(int operation) {
+        this.operation = operation;
+    }
+
+    public long getTransactionNonce() {
+        return transactionNonce;
+    }
+
+    public void setTransactionNonce(long transactionNonce) {
+        this.transactionNonce = transactionNonce;
+    }
+
+    public String getIntentHash() {
+        return intentHash;
+    }
+
+    public void setIntentHash(String intentHash) {
+        this.intentHash = intentHash;
+    }
+
+    public String getTransactionHash() {
+        return transactionHash;
+    }
+
+    public void setTransactionHash(String transactionHash) {
+        this.transactionHash = transactionHash;
+    }
+
+    public String getPassportHash() {
+        return passportHash;
+    }
+
+    public void setPassportHash(String passportHash) {
+        this.passportHash = passportHash;
+    }
+
+    public Instant getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+
+    public Instant getExpiresAt() {
+        return expiresAt;
+    }
+
+    public void setExpiresAt(Instant expiresAt) {
+        this.expiresAt = expiresAt;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public String getConstraintsHash() {
+        return constraintsHash;
+    }
+
+    public void setConstraintsHash(String constraintsHash) {
+        this.constraintsHash = constraintsHash;
+    }
+
+    public String getConstraintsPayload() {
+        return constraintsPayload;
+    }
+
+    public void setConstraintsPayload(String constraintsPayload) {
+        this.constraintsPayload = constraintsPayload;
+    }
+}
+
+========== ENTITY: ProofBundle.java ==========
+
+package com.truesign.entity;
+
+import jakarta.persistence.*;
+import java.time.Instant;
+
+@Entity
+@Table(name = "proof_bundles")
+public class ProofBundle {
+
+    @Id
+    @Column(length = 36, nullable = false)
+    private String id;
+
+    @Column(nullable = false, length = 36)
+    private String passportId;
+
+    @Column(nullable = false, length = 66)
+    private String passportHash;
+
+    @Column(nullable = false, length = 20)
+    private String overallVerdict;
+
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String proofPayload;
+
+    @Column(nullable = false)
+    private Instant createdAt;
+
+    public ProofBundle() {}
+
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
+
+    public String getPassportId() { return passportId; }
+    public void setPassportId(String passportId) {
+        this.passportId = passportId;
+    }
+
+    public String getPassportHash() { return passportHash; }
+    public void setPassportHash(String passportHash) {
+        this.passportHash = passportHash;
+    }
+
+    public String getOverallVerdict() { return overallVerdict; }
+    public void setOverallVerdict(String overallVerdict) {
+        this.overallVerdict = overallVerdict;
+    }
+
+    public String getProofPayload() { return proofPayload; }
+    public void setProofPayload(String proofPayload) {
+        this.proofPayload = proofPayload;
+    }
+
+    public Instant getCreatedAt() { return createdAt; }
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+}
+
+========== ENTITY: VerificationRecord.java ==========
+
+package com.truesign.entity;
+
+import jakarta.persistence.*;
+import java.time.Instant;
+
+@Entity
+@Table(name = "verification_records")
+public class VerificationRecord {
+
+    @Id
+    @Column(length = 36, nullable = false)
+    private String id;
+
+    @Column(nullable = false, length = 36)
+    private String passportId;
+
+    @Column(nullable = false, length = 20)
+    private String overallVerdict;
+
+    @Column(nullable = false)
+    private int passedCount;
+
+    @Column(nullable = false)
+    private int totalVerifiers;
+
+    @Column(nullable = false, columnDefinition = "TEXT")
+    private String resultsPayload;
+
+    @Column(nullable = false)
+    private Instant createdAt;
+
+    public VerificationRecord() {}
+
+    public String getId() { return id; }
+    public void setId(String id) { this.id = id; }
+
+    public String getPassportId() { return passportId; }
+    public void setPassportId(String passportId) {
+        this.passportId = passportId;
+    }
+
+    public String getOverallVerdict() { return overallVerdict; }
+    public void setOverallVerdict(String overallVerdict) {
+        this.overallVerdict = overallVerdict;
+    }
+
+    public int getPassedCount() { return passedCount; }
+    public void setPassedCount(int passedCount) {
+        this.passedCount = passedCount;
+    }
+
+    public int getTotalVerifiers() { return totalVerifiers; }
+    public void setTotalVerifiers(int totalVerifiers) {
+        this.totalVerifiers = totalVerifiers;
+    }
+
+    public String getResultsPayload() { return resultsPayload; }
+    public void setResultsPayload(String resultsPayload) {
+        this.resultsPayload = resultsPayload;
+    }
+
+    public Instant getCreatedAt() { return createdAt; }
+    public void setCreatedAt(Instant createdAt) {
+        this.createdAt = createdAt;
+    }
+}
+
+========== REPOSITORY: PassportSnapshotRepository.java ==========
+package com.truesign.repository;
+
+import com.truesign.entity.PassportSnapshot;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+
+public interface PassportSnapshotRepository
+        extends JpaRepository<PassportSnapshot, String> {
+
+    List<PassportSnapshot> findByPassportIdOrderByCapturedAtEpochMsAsc(
+            String passportId
+    );
+}
+
+========== REPOSITORY: PayeeRepository.java ==========
+package com.truesign.repository;
+
+import com.truesign.entity.PayeeRecord;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
+
+public interface PayeeRepository extends JpaRepository<PayeeRecord, String> {
+
+    Optional<PayeeRecord> findByAccountAndPayee(String account, String payee);
+}
+
+========== REPOSITORY: PaymentPassportRepository.java ==========
+
+package com.truesign.repository;
+
+import com.truesign.entity.PaymentPassport;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface PaymentPassportRepository
+        extends JpaRepository<PaymentPassport, String> {
+}
+
+========== REPOSITORY: ProofBundleRepository.java ==========
+
+package com.truesign.repository;
+
+import com.truesign.entity.ProofBundle;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
+
+public interface ProofBundleRepository
+        extends JpaRepository<ProofBundle, String> {
+
+    Optional<ProofBundle> findFirstByPassportIdOrderByCreatedAtDesc(
+            String passportId
+    );
+}
+
+========== REPOSITORY: VerificationRecordRepository.java ==========
+
+package com.truesign.repository;
+
+import com.truesign.entity.VerificationRecord;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+
+public interface VerificationRecordRepository
+        extends JpaRepository<VerificationRecord, String> {
+
+    List<VerificationRecord> findByPassportIdOrderByCreatedAtDesc(
+            String passportId
+    );
+}

@@ -1,6 +1,10 @@
 
 package com.truesign.service;
+import com.truesign.events.PassportEventPublisher;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.util.Map;
 import com.truesign.dto.request.CreatePassportRequest;
 import com.truesign.dto.request.ConstraintsDto;
 import com.truesign.dto.request.IntentDto;
@@ -25,9 +29,14 @@ import java.util.UUID;
 public class PassportService {
 
     private final PaymentPassportRepository repository;
+    private final PassportEventPublisher eventPublisher;
 
-    public PassportService(PaymentPassportRepository repository) {
+    public PassportService(
+            PaymentPassportRepository repository,
+            PassportEventPublisher eventPublisher
+    ) {
         this.repository = repository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -113,7 +122,29 @@ public class PassportService {
 
         PaymentPassport saved = repository.save(passport);
 
-        return toResponse(saved);
+        PassportResponse response = toResponse(saved);
+
+// Publish only after the database transaction commits.
+        TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        eventPublisher.publish(
+                                "PASSPORT_CREATED",
+                                Map.of(
+                                        "event", "PASSPORT_CREATED",
+                                        "passportId", response.passportId(),
+                                        "account", response.account(),
+                                        "status", response.status(),
+                                        "createdAt", response.createdAt().toString(),
+                                        "timestamp", Instant.now().toString()
+                                )
+                        );
+                    }
+                }
+        );
+
+        return response;
     }
 
     @Transactional(readOnly = true)

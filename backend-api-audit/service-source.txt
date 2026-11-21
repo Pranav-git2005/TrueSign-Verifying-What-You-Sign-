@@ -1,0 +1,1135 @@
+
+========== events\PassportEventPublisher.java ==========
+
+package com.truesign.events;
+
+import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+@Service
+public class PassportEventPublisher {
+
+    private final CopyOnWriteArrayList<SseEmitter> clients =
+            new CopyOnWriteArrayList<>();
+
+    public SseEmitter subscribe() {
+
+        SseEmitter emitter = new SseEmitter(0L);
+
+        clients.add(emitter);
+
+        emitter.onCompletion(() -> clients.remove(emitter));
+        emitter.onTimeout(() -> clients.remove(emitter));
+        emitter.onError(error -> clients.remove(emitter));
+
+        try {
+            emitter.send(
+                    SseEmitter.event()
+                            .name("CONNECTED")
+                            .data(Map.of(
+                                    "event", "CONNECTED",
+                                    "timestamp", Instant.now().toString(),
+                                    "message", "Connected to TrueSign live event stream"
+                            ))
+            );
+        } catch (IOException exception) {
+            clients.remove(emitter);
+            emitter.completeWithError(exception);
+        }
+
+        return emitter;
+    }
+
+    public void publish(String eventName, Map<String, Object> payload) {
+
+        for (SseEmitter emitter : clients) {
+            try {
+                emitter.send(
+                        SseEmitter.event()
+                                .name(eventName)
+                                .data(payload)
+                );
+            } catch (IOException | IllegalStateException exception) {
+                clients.remove(emitter);
+                emitter.complete();
+            }
+        }
+    }
+
+    public int getConnectedClientCount() {
+        return clients.size();
+    }
+}
+
+========== service\SnapshotService.java ==========
+
+package com.truesign.service;
+
+import com.truesign.blockchain.PayeeRegistryService;
+import com.truesign.dto.response.SnapshotDto;
+import com.truesign.entity.PaymentPassport;
+import com.truesign.entity.PassportSnapshot;
+import com.truesign.repository.PaymentPassportRepository;
+import com.truesign.repository.PassportSnapshotRepository;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import org.web3j.abi.FunctionEncoder;
+import org.web3j.abi.TypeReference;
+import org.web3j.abi.datatypes.Address;
+import org.web3j.abi.datatypes.Function;
+import org.web3j.abi.datatypes.generated.Uint256;
+import org.web3j.crypto.Hash;
+import org.web3j.protocol.Web3j;
+import org.web3j.protocol.core.DefaultBlockParameterName;
+import org.web3j.protocol.core.methods.request.Transaction;
+import org.web3j.utils.Numeric;
+
+import java.math.BigInteger;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+@Service
+public class SnapshotService {
+
+    private final Web3j web3j;
+    private final PaymentPassportRepository passportRepository;
+    private final PassportSnapshotRepository snapshotRepository;
+    private final PayeeRegistryService payeeRegistryService;
+
+    @Value("${truesign.payee.cooldown-seconds:86400}")
+    private long cooldownSeconds;
+
+    public SnapshotService(
+            Web3j web3j,
+            PaymentPassportRepository passportRepository,
+            PassportSnapshotRepository snapshotRepository,
+            PayeeRegistryService payeeRegistryService
+    ) {
+        this.web3j = web3j;
+        this.passportRepository = passportRepository;
+        this.snapshotRepository = snapshotRepository;
+        this.payeeRegistryService = payeeRegistryService;
+    }
+
+    @Transactional
+    public SnapshotDto capture(String passportId, String snapshotType)
+            throws Exception {
+
+        PaymentPassport passport = passportRepository.findById(passportId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Payment Passport not found: " + passportId
+                ));
+
+        String account = passport.getAccount();
+        String recipient = passport.getIntendedRecipient();
+        String token = passport.getTokenAddress();
+        String target = passport.getTransactionTarget();
+
+        BigInteger blockNumber = web3j.ethBlockNumber()
+                .send()
+                .getBlockNumber();
+
+        BigInteger accountNative = web3j.ethGetBalance(
+                account, DefaultBlockParameterName.LATEST
+        ).send().getBalance();
+
+        BigInteger recipientNative = web3j.ethGetBalance(
+                recipient, DefaultBlockParameterName.LATEST
+        ).send().getBalance();
+
+        BigInteger accountToken = readTokenBalance(token, account);
+        BigInteger recipientToken = readTokenBalance(token, recipient);
+
+        String code = web3j.ethGetCode(
+                target, DefaultBlockParameterName.LATEST
+        ).send().getCode();
+
+        String codeHash = Hash.sha3(code == null ? "0x" : code);
+
+        Map<String, Object> payeeStatus =
+                payeeRegistryService.getPayeeStatus(account, recipient);
+
+        boolean registered = Boolean.TRUE.equals(payeeStatus.get("registered"));
+        boolean ready = Boolean.TRUE.equals(payeeStatus.get("active"));
+
+        Object activationValue = payeeStatus.get("activationTimestamp");
+        long activationTimestamp = activationValue == null
+                ? 0L
+                : Long.parseLong(activationValue.toString());
+
+        long readyAt = activationTimestamp == 0
+                ? 0L
+                : activationTimestamp + cooldownSeconds;
+
+        long now = Instant.now().getEpochSecond();
+
+        long remaining = readyAt == 0
+                ? 0L
+                : Math.max(0L, readyAt - now);
+
+        PassportSnapshot snapshot = new PassportSnapshot();
+
+        snapshot.setId(UUID.randomUUID().toString());
+        snapshot.setPassportId(passportId);
+        snapshot.setSnapshotType(snapshotType);
+        snapshot.setCapturedAtEpochMs(System.currentTimeMillis());
+        snapshot.setBlockNumber(blockNumber.toString());
+
+        snapshot.setAccountAddress(account);
+        snapshot.setIntendedRecipient(recipient);
+        snapshot.setTokenAddress(token);
+        snapshot.setTargetContractAddress(target);
+
+        snapshot.setAccountNativeBalanceWei(accountNative.toString());
+        snapshot.setRecipientNativeBalanceWei(recipientNative.toString());
+        snapshot.setAccountTokenBalance(accountToken.toString());
+        snapshot.setRecipientTokenBalance(recipientToken.toString());
+
+        snapshot.setTargetCodeHash(codeHash);
+
+        snapshot.setPayeeRegistered(registered);
+        snapshot.setPayeeReady(ready);
+        snapshot.setReadyAtEpochSeconds(readyAt);
+        snapshot.setRemainingCooldownSeconds(remaining);
+
+        return toDto(snapshotRepository.save(snapshot));
+    }
+
+    @Transactional(readOnly = true)
+    public List<SnapshotDto> getHistory(String passportId) {
+
+        if (!passportRepository.existsById(passportId)) {
+            throw new IllegalArgumentException(
+                    "Payment Passport not found: " + passportId
+            );
+        }
+
+        return snapshotRepository
+                .findByPassportIdOrderByCapturedAtEpochMsAsc(passportId)
+                .stream()
+                .map(this::toDto)
+                .toList();
+    }
+
+    private BigInteger readTokenBalance(String token, String holder)
+            throws Exception {
+
+        Function function = new Function(
+                "balanceOf",
+                List.of(new Address(holder)),
+                List.of(new TypeReference<Uint256>() {})
+        );
+
+        String data = FunctionEncoder.encode(function);
+
+        var response = web3j.ethCall(
+                Transaction.createEthCallTransaction(null, token, data),
+                DefaultBlockParameterName.LATEST
+        ).send();
+
+        if (response.hasError()) {
+            throw new IllegalStateException(
+                    "ERC-20 balanceOf failed: " +
+                    response.getError().getMessage()
+            );
+        }
+
+        String output = Numeric.cleanHexPrefix(response.getValue());
+
+        if (output == null || output.isBlank()) {
+            throw new IllegalStateException(
+                    "ERC-20 balanceOf returned empty data for " + token
+            );
+        }
+
+        return new BigInteger(output, 16);
+    }
+
+    private SnapshotDto toDto(PassportSnapshot s) {
+
+        return new SnapshotDto(
+                s.getId(),
+                s.getPassportId(),
+                s.getSnapshotType(),
+                s.getCapturedAtEpochMs(),
+                s.getBlockNumber(),
+                s.getAccountAddress(),
+                s.getIntendedRecipient(),
+                s.getTokenAddress(),
+                s.getTargetContractAddress(),
+                s.getAccountNativeBalanceWei(),
+                s.getRecipientNativeBalanceWei(),
+                s.getAccountTokenBalance(),
+                s.getRecipientTokenBalance(),
+                s.getTargetCodeHash(),
+                s.isPayeeRegistered(),
+                s.isPayeeReady(),
+                s.getReadyAtEpochSeconds(),
+                s.getRemainingCooldownSeconds()
+        );
+    }
+}
+
+========== service\PassportService.java ==========
+
+
+package com.truesign.service;
+
+import com.truesign.dto.request.CreatePassportRequest;
+import com.truesign.dto.request.ConstraintsDto;
+import com.truesign.dto.request.IntentDto;
+import com.truesign.dto.request.TransactionProposalDto;
+import com.truesign.dto.response.PassportResponse;
+import com.truesign.entity.PaymentPassport;
+import com.truesign.repository.PaymentPassportRepository;
+
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
+import java.util.HexFormat;
+import java.util.UUID;
+
+@Service
+public class PassportService {
+
+    private final PaymentPassportRepository repository;
+
+    public PassportService(PaymentPassportRepository repository) {
+        this.repository = repository;
+    }
+
+    @Transactional
+    public PassportResponse createPassport(CreatePassportRequest request) {
+
+        validateBusinessRules(request);
+
+        IntentDto intent = request.intent();
+        ConstraintsDto constraints = request.constraints();
+        TransactionProposalDto transaction = request.transaction();
+
+        Instant createdAt = Instant.now();
+
+        String constraintsPayload = canonical(
+                constraints.maxAmount(),
+                constraints.allowedTarget(),
+                constraints.allowedSelector(),
+                constraints.expectedCodeHash(),
+                Boolean.toString(constraints.allowDelegateCall()),
+                Boolean.toString(constraints.allowUnlimitedApproval()),
+                constraints.dailyLimit(),
+                Long.toString(constraints.cooldownSeconds())
+        );
+
+        String intentHash = hash(
+                intent.purpose(),
+                intent.summary(),
+                intent.recipient().toLowerCase(),
+                intent.tokenAddress().toLowerCase(),
+                intent.tokenSymbol(),
+                intent.amount()
+        );
+
+        String transactionHash = hash(
+                transaction.to().toLowerCase(),
+                transaction.valueWei(),
+                transaction.data().toLowerCase(),
+                Integer.toString(transaction.operation()),
+                Long.toString(transaction.nonce())
+        );
+
+        String constraintsHash = hash(constraintsPayload);
+
+        String passportHash = hash(
+                request.account().toLowerCase(),
+                request.mode(),
+                Long.toString(request.chainId()),
+                intentHash,
+                transactionHash,
+                constraintsHash,
+                request.expiresAt().toString()
+        );
+
+        PaymentPassport passport = new PaymentPassport();
+
+        passport.setId(UUID.randomUUID().toString());
+        passport.setAccount(request.account().toLowerCase());
+        passport.setMode(request.mode());
+        passport.setChainId(request.chainId());
+
+        passport.setPurpose(intent.purpose());
+        passport.setSummary(intent.summary());
+        passport.setIntendedRecipient(intent.recipient().toLowerCase());
+        passport.setTokenAddress(intent.tokenAddress().toLowerCase());
+        passport.setTokenSymbol(intent.tokenSymbol());
+        passport.setAmount(intent.amount());
+
+        passport.setTransactionTarget(transaction.to().toLowerCase());
+        passport.setTransactionValueWei(transaction.valueWei());
+        passport.setTransactionData(transaction.data().toLowerCase());
+        passport.setOperation(transaction.operation());
+        passport.setTransactionNonce(transaction.nonce());
+
+        passport.setIntentHash(intentHash);
+        passport.setTransactionHash(transactionHash);
+        passport.setConstraintsHash(constraintsHash);
+        passport.setConstraintsPayload(constraintsPayload);
+        passport.setPassportHash(passportHash);
+
+        passport.setCreatedAt(createdAt);
+        passport.setExpiresAt(request.expiresAt());
+        passport.setStatus("CREATED");
+
+        PaymentPassport saved = repository.save(passport);
+
+        return toResponse(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public PassportResponse getPassport(String passportId) {
+
+        PaymentPassport passport = repository.findById(passportId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Payment Passport not found: " + passportId
+                ));
+
+        return toResponse(passport);
+    }
+
+    private void validateBusinessRules(CreatePassportRequest request) {
+
+        BigDecimal amount = new BigDecimal(request.intent().amount());
+        BigDecimal maxAmount = new BigDecimal(
+                request.constraints().maxAmount()
+        );
+
+        BigDecimal dailyLimit = new BigDecimal(
+                request.constraints().dailyLimit()
+        );
+
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException(
+                    "Payment amount must be greater than zero"
+            );
+        }
+
+        if (maxAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException(
+                    "Maximum amount must be greater than zero"
+            );
+        }
+
+        if (dailyLimit.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException(
+                    "Daily limit must be greater than zero"
+            );
+        }
+
+        if (amount.compareTo(maxAmount) > 0) {
+            throw new IllegalArgumentException(
+                    "Payment amount exceeds the configured maximum"
+            );
+        }
+
+        if (request.transaction().operation() != 0 &&
+                request.transaction().operation() != 1) {
+            throw new IllegalArgumentException(
+                    "Transaction operation must be 0 (CALL) or 1 (DELEGATECALL)"
+            );
+        }
+
+        if (request.expiresAt().isBefore(Instant.now())) {
+            throw new IllegalArgumentException(
+                    "Payment Passport expiry must be in the future"
+            );
+        }
+    }
+
+    private PassportResponse toResponse(PaymentPassport passport) {
+
+        return new PassportResponse(
+                passport.getId(),
+                passport.getAccount(),
+                passport.getMode(),
+                passport.getChainId(),
+                passport.getPurpose(),
+                passport.getIntendedRecipient(),
+                passport.getTokenSymbol(),
+                passport.getAmount(),
+                passport.getIntentHash(),
+                passport.getTransactionHash(),
+                passport.getPassportHash(),
+                passport.getCreatedAt(),
+                passport.getExpiresAt(),
+                passport.getStatus()
+        );
+    }
+
+    private String hash(String... values) {
+        return hash(canonical(values));
+    }
+
+    private String canonical(String... values) {
+
+        StringBuilder builder = new StringBuilder();
+
+        for (String value : values) {
+            String safeValue = value == null ? "" : value;
+            byte[] bytes = safeValue.getBytes(StandardCharsets.UTF_8);
+
+            builder.append(bytes.length)
+                    .append(':')
+                    .append(safeValue);
+        }
+
+        return builder.toString();
+    }
+
+    private String hash(String value) {
+
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+
+            byte[] hash = digest.digest(
+                    value.getBytes(StandardCharsets.UTF_8)
+            );
+
+            return "0x" + HexFormat.of().formatHex(hash);
+
+        } catch (NoSuchAlgorithmException exception) {
+            throw new IllegalStateException(
+                    "SHA-256 algorithm is unavailable",
+                    exception
+            );
+        }
+    }
+}
+
+========== service\VerificationService.java ==========
+
+
+package com.truesign.service;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonPrimitive;
+import com.google.gson.JsonSerializationContext;
+import com.google.gson.JsonSerializer;
+import com.truesign.dto.response.AnomalyDto;
+import com.truesign.dto.response.ProofBundleResponse;
+import com.truesign.dto.response.VerificationResponse;
+import com.truesign.dto.response.VerifierVerdictDto;
+import com.truesign.entity.PaymentPassport;
+import com.truesign.entity.VerificationRecord;
+import com.truesign.repository.PaymentPassportRepository;
+import com.truesign.repository.VerificationRecordRepository;
+import com.truesign.verifier.VerificationOrchestrator;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.List;
+
+@Service
+public class VerificationService {
+
+    private final PaymentPassportRepository passportRepository;
+    private final VerificationRecordRepository verificationRepository;
+    private final VerificationOrchestrator orchestrator;
+    private final AnomalyService anomalyService;
+    private final ProofBundleService proofBundleService;
+    private final Gson gson;
+
+    public VerificationService(
+            PaymentPassportRepository passportRepository,
+            VerificationRecordRepository verificationRepository,
+            VerificationOrchestrator orchestrator,
+            AnomalyService anomalyService,
+            ProofBundleService proofBundleService) {
+
+        this.passportRepository = passportRepository;
+        this.verificationRepository = verificationRepository;
+        this.orchestrator = orchestrator;
+        this.anomalyService = anomalyService;
+        this.proofBundleService = proofBundleService;
+
+        JsonSerializer<Instant> instantSerializer =
+                new JsonSerializer<Instant>() {
+                    @Override
+                    public JsonElement serialize(
+                            Instant src,
+                            java.lang.reflect.Type typeOfSrc,
+                            JsonSerializationContext context) {
+
+                        return new JsonPrimitive(src.toString());
+                    }
+                };
+
+        this.gson = new GsonBuilder()
+                .registerTypeAdapter(
+                        Instant.class,
+                        instantSerializer
+                )
+                .create();
+    }
+
+    @Transactional
+    public VerificationResponse verifyPassport(String passportId) {
+
+        if (passportId == null || passportId.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Passport ID cannot be empty"
+            );
+        }
+
+        // 1. Retrieve the Payment Passport.
+        PaymentPassport passport = passportRepository.findById(passportId)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Payment Passport not found: " + passportId
+                ));
+
+        // 2. Execute all registered verifiers.
+        List<VerifierVerdictDto> verdicts =
+                orchestrator.verifyAll(passport);
+
+        // 3. Collect all detected anomalies.
+        List<AnomalyDto> anomalies =
+                anomalyService.collectAnomalies(verdicts);
+
+        // 4. Calculate ONE authoritative verdict.
+        String overallVerdict =
+                orchestrator.calculateOverallVerdict(verdicts);
+
+        // The traffic light must agree with the overall verdict.
+        String trafficLight = overallVerdict;
+
+        int passedCount = (int) verdicts.stream()
+                .filter(VerifierVerdictDto::passed)
+                .count();
+
+        Instant verifiedAt = Instant.now();
+
+        // 5. Generate Proof Bundle using the authoritative verdict.
+        ProofBundleResponse proofBundle =
+                proofBundleService.createProofBundle(
+                        passport,
+                        verdicts,
+                        overallVerdict
+                );
+
+        // 6. Persist verification history.
+        VerificationRecord record = new VerificationRecord();
+
+        record.setId(java.util.UUID.randomUUID().toString());
+        record.setPassportId(passportId);
+        record.setOverallVerdict(overallVerdict);
+        record.setPassedCount(passedCount);
+        record.setTotalVerifiers(verdicts.size());
+        record.setResultsPayload(gson.toJson(verdicts));
+        record.setCreatedAt(verifiedAt);
+
+        verificationRepository.save(record);
+
+        // 7. Return a consistent API response.
+        return new VerificationResponse(
+                passportId,
+                overallVerdict,
+                passedCount,
+                verdicts.size(),
+                trafficLight,
+                verdicts,
+                anomalies,
+                proofBundle,
+                verifiedAt
+        );
+    }
+}
+
+========== blockchain\BlockchainService.java ==========
+
+
+package com.truesign.blockchain;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.web3j.protocol.Web3j;
+import org.web3j.protocol.core.DefaultBlockParameterName;
+
+import java.math.BigInteger;
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+@Service
+public class BlockchainService {
+
+    private final Web3j web3j;
+
+    private static final BigInteger GUARD_STORAGE_SLOT =
+            new BigInteger(
+                    "4a204f620c8c5ccdca3fd54d003badd85ba500436a431f0cbda4f558c93c34c8",
+                    16
+            );
+
+    @Value("${truesign.blockchain.chain-id}")
+    private long expectedChainId;
+
+    @Value("${truesign.contracts.safe-address}")
+    private String safeAddress;
+
+    @Value("${truesign.contracts.guard-address}")
+    private String guardAddress;
+
+    @Value("${truesign.contracts.payee-registry-address}")
+    private String registryAddress;
+
+    @Value("${truesign.contracts.token-address}")
+    private String tokenAddress;
+
+    public BlockchainService(Web3j web3j) {
+        this.web3j = web3j;
+    }
+
+    public Map<String, Object> getStatus() throws Exception {
+
+        long actualChainId = web3j.ethChainId()
+                .send()
+                .getChainId()
+                .longValueExact();
+
+        String latestBlock = web3j.ethBlockNumber()
+                .send()
+                .getBlockNumber()
+                .toString();
+
+        boolean safeExists = contractExists(safeAddress);
+        boolean guardExists = contractExists(guardAddress);
+        boolean registryExists = contractExists(registryAddress);
+        boolean tokenExists = contractExists(tokenAddress);
+
+        // Read the Safe's actual Guard storage slot.
+        String storageValue = web3j.ethGetStorageAt(
+                safeAddress,
+                GUARD_STORAGE_SLOT,
+                DefaultBlockParameterName.LATEST
+        ).send().getData();
+
+        String installedGuardAddress = decodeAddress(storageValue);
+
+        boolean guardInstalled =
+                installedGuardAddress.equalsIgnoreCase(guardAddress);
+
+        Map<String, Object> result = new LinkedHashMap<>();
+
+        result.put("connected", true);
+
+        result.put("chainId", actualChainId);
+        result.put("expectedChainId", expectedChainId);
+        result.put("correctNetwork", actualChainId == expectedChainId);
+
+        result.put("latestBlock", latestBlock);
+
+        result.put("safeAddress", safeAddress);
+        result.put("safeExists", safeExists);
+
+        result.put("guardAddress", guardAddress);
+        result.put("guardExists", guardExists);
+
+        result.put("installedGuardAddress", installedGuardAddress);
+        result.put("guardInstalled", guardInstalled);
+
+        result.put("payeeRegistryAddress", registryAddress);
+        result.put("payeeRegistryExists", registryExists);
+
+        result.put("tokenAddress", tokenAddress);
+        result.put("tokenExists", tokenExists);
+
+        boolean allContractsExist =
+                safeExists &&
+                        guardExists &&
+                        registryExists &&
+                        tokenExists;
+
+        boolean fullyConfigured =
+                actualChainId == expectedChainId &&
+                        allContractsExist &&
+                        guardInstalled;
+
+        result.put(
+                "status",
+                fullyConfigured ? "CONNECTED" : "CONFIGURATION_ERROR"
+        );
+
+        return result;
+    }
+
+    private boolean contractExists(String address) throws Exception {
+
+        String code = web3j.ethGetCode(
+                address,
+                DefaultBlockParameterName.LATEST
+        ).send().getCode();
+
+        return code != null &&
+                !code.equals("0x") &&
+                !code.equals("0x0");
+    }
+
+    private String decodeAddress(String storageValue) {
+
+        if (storageValue == null) {
+            return "0x0000000000000000000000000000000000000000";
+        }
+
+        String normalized = storageValue.startsWith("0x")
+                ? storageValue.substring(2)
+                : storageValue;
+
+        if (normalized.length() < 40) {
+            return "0x0000000000000000000000000000000000000000";
+        }
+
+        String address = normalized.substring(normalized.length() - 40);
+
+        return "0x" + address.toLowerCase();
+    }
+}
+
+========== blockchain\PayeeRegistryService.java ==========
+
+package com.truesign.blockchain;
+
+import com.truesign.dto.request.RegisterPayeeRequest;
+import com.truesign.entity.PayeeRecord;
+import com.truesign.repository.PayeeRepository;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.web3j.abi.FunctionEncoder;
+import org.web3j.abi.datatypes.Address;
+import org.web3j.abi.datatypes.Function;
+import org.web3j.protocol.Web3j;
+import org.web3j.protocol.core.DefaultBlockParameterName;
+import org.web3j.protocol.core.methods.response.Transaction;
+import org.web3j.utils.Numeric;
+
+import java.math.BigInteger;
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+@Service
+public class PayeeRegistryService {
+
+    private final Web3j web3j;
+    private final PayeeRepository repository;
+
+    @Value("${truesign.contracts.payee-registry-address}")
+    private String registryAddress;
+
+    @Value("${truesign.blockchain.chain-id}")
+    private long expectedChainId;
+
+    public PayeeRegistryService(Web3j web3j, PayeeRepository repository) {
+        this.web3j = web3j;
+        this.repository = repository;
+    }
+
+    public Map<String, Object> confirmRegistration(RegisterPayeeRequest request)
+            throws Exception {
+
+        String account = normalize(request.account());
+        String payee = normalize(request.payee());
+        String txHash = request.transactionHash();
+
+        if (account.equals(payee)) {
+            throw new IllegalArgumentException("An account cannot register itself as a payee.");
+        }
+
+        long chainId = web3j.ethChainId().send().getChainId().longValueExact();
+
+        if (chainId != expectedChainId) {
+            throw new IllegalStateException(
+                    "Wrong blockchain network. Expected chain " + expectedChainId +
+                    " but connected to " + chainId
+            );
+        }
+
+        var receiptResponse = web3j.ethGetTransactionReceipt(txHash).send();
+
+        var receipt = receiptResponse.getTransactionReceipt()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Transaction is not mined or does not exist."
+                ));
+
+        if (!"0x1".equalsIgnoreCase(receipt.getStatus())) {
+            throw new IllegalArgumentException("Payee registration transaction failed.");
+        }
+
+        Transaction transaction = web3j.ethGetTransactionByHash(txHash)
+                .send()
+                .getTransaction()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Transaction details could not be retrieved."
+                ));
+
+        if (!account.equalsIgnoreCase(transaction.getFrom())) {
+            throw new IllegalArgumentException(
+                    "Transaction sender does not match the requested account."
+            );
+        }
+
+        if (transaction.getTo() == null ||
+                !registryAddress.equalsIgnoreCase(transaction.getTo())) {
+            throw new IllegalArgumentException(
+                    "Transaction was not sent to the configured PayeeRegistry."
+            );
+        }
+
+        Function registerFunction = new Function(
+                "registerPayee",
+                List.of(new Address(payee)),
+                List.of()
+        );
+
+        String expectedInput = FunctionEncoder.encode(registerFunction);
+
+        if (!expectedInput.equalsIgnoreCase(transaction.getInput())) {
+            throw new IllegalArgumentException(
+                    "Transaction calldata does not match registerPayee(payee)."
+            );
+        }
+
+        BigInteger activationTimestamp = readUint256(
+                "activationTimestamp",
+                List.of(new Address(account), new Address(payee))
+        );
+
+        if (activationTimestamp.signum() <= 0) {
+            throw new IllegalStateException(
+                    "Registration transaction succeeded but the contract has no activation timestamp."
+            );
+        }
+
+        PayeeRecord record = repository
+                .findByAccountAndPayee(account, payee)
+                .orElseGet(PayeeRecord::new);
+
+        record.setAccount(account);
+        record.setPayee(payee);
+        record.setTransactionHash(txHash);
+        record.setActivationTimestamp(activationTimestamp.toString());
+        record.setCreatedAt(Instant.now());
+
+        repository.save(record);
+
+        return getPayeeStatus(account, payee);
+    }
+
+    public Map<String, Object> getPayeeStatus(String account, String payee)
+            throws Exception {
+
+        account = normalize(account);
+        payee = normalize(payee);
+
+        boolean registered = readBool(
+                "isPayeeRegistered",
+                List.of(new Address(account), new Address(payee))
+        );
+
+        boolean active = readBool(
+                "isPayeeActive",
+                List.of(new Address(account), new Address(payee))
+        );
+
+        BigInteger activationTimestamp = readUint256(
+                "activationTimestamp",
+                List.of(new Address(account), new Address(payee))
+        );
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("account", account);
+        result.put("payee", payee);
+        result.put("registered", registered);
+        result.put("active", active);
+        result.put("activationTimestamp", activationTimestamp.toString());
+        result.put("activationTime", activationTimestamp.signum() > 0
+                ? Instant.ofEpochSecond(activationTimestamp.longValue()).toString()
+                : null);
+        result.put("registryAddress", registryAddress);
+        result.put("chainId", expectedChainId);
+
+        repository.findByAccountAndPayee(account, payee).ifPresent(record -> {
+            result.put("registrationTransactionHash", record.getTransactionHash());
+            result.put("backendRecordedAt", record.getCreatedAt());
+        });
+
+        return result;
+    }
+
+    private boolean readBool(String functionName, List<org.web3j.abi.datatypes.Type> inputs)
+            throws Exception {
+        String output = callView(functionName, inputs);
+        return new BigInteger(output, 16).signum() != 0;
+    }
+
+    private BigInteger readUint256(
+            String functionName,
+            List<org.web3j.abi.datatypes.Type> inputs
+    ) throws Exception {
+        String output = callView(functionName, inputs);
+        return new BigInteger(output, 16);
+    }
+
+    private String callView(
+            String functionName,
+            List<org.web3j.abi.datatypes.Type> inputs
+    ) throws Exception {
+
+        Function function = new Function(functionName, inputs, List.of());
+        String data = FunctionEncoder.encode(function);
+
+        var response = web3j.ethCall(
+                org.web3j.protocol.core.methods.request.Transaction.createEthCallTransaction(
+                        null, registryAddress, data
+                ),
+                DefaultBlockParameterName.LATEST
+        ).send();
+
+        if (response.hasError()) {
+            throw new IllegalStateException(
+                    "PayeeRegistry call failed: " + response.getError().getMessage()
+            );
+        }
+
+        String value = Numeric.cleanHexPrefix(response.getValue());
+
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException("PayeeRegistry returned empty data.");
+        }
+
+        return value;
+    }
+
+    private String normalize(String address) {
+        if (address == null ||
+                !address.matches("(?i)^0x[a-f0-9]{40}$")) {
+            throw new IllegalArgumentException("Invalid Ethereum address.");
+        }
+        return address.toLowerCase();
+    }
+}
+
+========== verifier\VerificationOrchestrator.java ==========
+
+package com.truesign.verifier;
+
+import com.truesign.dto.response.VerifierVerdictDto;
+import com.truesign.entity.PaymentPassport;
+import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+
+@Service
+public class VerificationOrchestrator {
+
+    private static final int REQUIRED_VERIFIERS = 3;
+
+    private final List<Verifier> verifiers;
+
+    public VerificationOrchestrator(List<Verifier> verifiers) {
+        this.verifiers = verifiers;
+    }
+
+    public List<VerifierVerdictDto> verifyAll(PaymentPassport passport) {
+        List<VerifierVerdictDto> results = new ArrayList<>();
+
+        for (Verifier verifier : verifiers) {
+            try {
+                VerifierVerdictDto result = verifier.verify(passport);
+
+                results.add(result == null
+                        ? failed(verifier.getVerifierName(), "Empty verifier result")
+                        : result);
+
+            } catch (Exception exception) {
+                results.add(failed(
+                        verifier.getVerifierName(),
+                        exception.getMessage()
+                ));
+            }
+        }
+
+        return results;
+    }
+
+    private VerifierVerdictDto failed(String name, String message) {
+        return new VerifierVerdictDto(
+                name,
+                false,
+                "RED",
+                "Verifier failed: " + message,
+                List.of(),
+                Instant.now()
+        );
+    }
+
+    public String calculateOverallVerdict(List<VerifierVerdictDto> results) {
+
+        if (results == null
+                || results.size() != REQUIRED_VERIFIERS
+                || results.stream().anyMatch(r -> r == null)) {
+            return "INCONCLUSIVE";
+        }
+
+        if (results.stream().anyMatch(r ->
+                "INCONCLUSIVE".equalsIgnoreCase(r.status()))) {
+            return "INCONCLUSIVE";
+        }
+
+        if (results.stream().anyMatch(r -> !r.passed())) {
+            return "RED";
+        }
+
+        boolean critical = results.stream()
+                .filter(r -> r.anomalies() != null)
+                .flatMap(r -> r.anomalies().stream())
+                .anyMatch(a -> "CRITICAL".equalsIgnoreCase(a.severity()));
+
+        if (critical || results.stream().anyMatch(r ->
+                "RED".equalsIgnoreCase(r.status()))) {
+            return "RED";
+        }
+
+        boolean warning = results.stream().anyMatch(r ->
+                "AMBER".equalsIgnoreCase(r.status())
+                || (r.anomalies() != null && !r.anomalies().isEmpty())
+        );
+
+        if (warning) {
+            return "AMBER";
+        }
+
+        return results.stream().allMatch(r ->
+                r.passed() && "GREEN".equalsIgnoreCase(r.status()))
+                ? "GREEN"
+                : "INCONCLUSIVE";
+    }
+}
